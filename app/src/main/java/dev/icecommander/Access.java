@@ -125,6 +125,13 @@ final class Access {
     }
   }
 
+  private static String outputLine(byte[] bytes) throws IOException {
+    String line = new String(bytes, StandardCharsets.UTF_8);
+    if (line.endsWith("\n")) line = line.substring(0, line.length() - 1);
+    if (line.isEmpty()) throw new IOException("Не удалось определить полный путь");
+    return line;
+  }
+
   static void operation(String op, String source, String target) throws Exception {
     String s = q(source), t = q(target);
     if (op.equals("delete")) {
@@ -141,8 +148,18 @@ final class Access {
       run("set -C; : > " + t);
       return;
     }
-    String canonicalSource = new File(source).getCanonicalPath(),
-        canonicalTarget = new File(target).getCanonicalPath();
+    String canonicalSource;
+    String canonicalTarget;
+    if (mode.equals("normal")) {
+      canonicalSource = new File(source).getCanonicalPath();
+      canonicalTarget = new File(target).getCanonicalPath();
+    } else {
+      // Resolve protected paths under the selected UID, not the application UID.
+      canonicalSource = outputLine(run("readlink -f -- " + s));
+      File destination = new File(target);
+      String parent = outputLine(run("cd " + q(destination.getParent()) + " && pwd -P"));
+      canonicalTarget = new File(parent, destination.getName()).getPath();
+    }
     if (canonicalTarget.equals(canonicalSource)
         || canonicalTarget.startsWith(canonicalSource + "/"))
       throw new IOException("Нельзя поместить объект внутрь самого себя");
